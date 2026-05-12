@@ -1,0 +1,34 @@
+name: Daily Agent Briefing
+
+on:
+  schedule:
+    # 8:00 AM Pakistan Standard Time (PKT = UTC+5) = 3:00 AM UTC
+    # Change the hour to match your timezone: UTC+5 means subtract 5 from your local hour
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    # Allows you to trigger manually from GitHub.com → Actions tab → Run workflow
+
+jobs:
+  morning-briefing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Morning Briefing
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SHOPIFY_STORE_URL: ${{ secrets.SHOPIFY_STORE_URL }}
+          SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
+          PYTHONUTF8: "1"
+        run: python main.py --briefing
