@@ -1,0 +1,27 @@
+name: Flash Sale (BLAZE)
+
+on:
+  workflow_dispatch:
+    inputs:
+      instruction:
+        description: 'Custom instruction for BLAZE (optional)'
+        required: false
+        default: ''
+
+jobs:
+  flash-sale:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install -r requirements.txt
+      - name: BLAZE creates flash sale
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SHOPIFY_STORE_URL: ${{ secrets.SHOPIFY_STORE_URL }}
+          SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
+          PYTHONUTF8: "1"
+        run: python main.py --flash-sale

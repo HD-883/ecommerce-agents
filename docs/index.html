@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Legacy Commerce — Agent Control</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0d0d0d;
+      color: #f0f0f0;
+      min-height: 100vh;
+      padding: 24px 16px 40px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    header h1 { font-size: 1.4rem; font-weight: 700; color: #f5c842; }
+    header p  { font-size: 0.85rem; color: #888; margin-top: 4px; }
+
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card p {
+      font-size: 0.8rem;
+      color: #888;
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      letter-spacing: 0.01em;
+    }
+    button:active  { transform: scale(0.97); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-yellow { background: #f5c842; color: #0d0d0d; }
+    .btn-red    { background: #e03c3c; color: #fff; }
+    .btn-blue   { background: #3c8ce0; color: #fff; }
+    .btn-green  { background: #3cba6f; color: #fff; }
+
+    .status {
+      margin-top: 10px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 0.82rem;
+      display: none;
+    }
+    .status.show   { display: block; }
+    .status.ok     { background: #1e3a2a; color: #5de09b; border: 1px solid #2d6645; }
+    .status.err    { background: #3a1e1e; color: #e08080; border: 1px solid #663030; }
+    .status.loading{ background: #1e2a3a; color: #80b0e0; border: 1px solid #2d4566; }
+
+    .setup-card {
+      background: #111;
+      border: 1px dashed #333;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+    .setup-card h2 { font-size: 0.95rem; color: #f5c842; margin-bottom: 8px; }
+    .setup-card p  { font-size: 0.8rem; color: #888; margin-bottom: 12px; line-height: 1.5; }
+
+    input[type="password"] {
+      width: 100%;
+      padding: 12px 14px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 10px;
+      color: #f0f0f0;
+      font-size: 0.9rem;
+      margin-bottom: 10px;
+    }
+    input::placeholder { color: #555; }
+
+    .saved-badge {
+      display: inline-block;
+      background: #1e3a2a;
+      color: #5de09b;
+      border: 1px solid #2d6645;
+      border-radius: 8px;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      margin-left: 8px;
+    }
+
+    .actions-link {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 0.8rem;
+      color: #555;
+    }
+    .actions-link a { color: #888; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>⚡ Legacy Commerce</h1>
+  <p>AI Agent Control Panel</p>
+</header>
+
+<!-- Setup -->
+<div class="setup-card" id="setupCard">
+  <h2>🔑 One-time Setup <span class="saved-badge" id="savedBadge" style="display:none">Token saved ✓</span></h2>
+  <p>Paste your GitHub Personal Access Token (needs <strong>Actions: write</strong> permission). It's stored only in this browser.</p>
+  <input type="password" id="tokenInput" placeholder="github_pat_xxxxxxxxxxxx">
+  <button class="btn-yellow" onclick="saveToken()">Save Token</button>
+</div>
+
+<!-- Morning Briefing -->
+<div class="card">
+  <h2>🌅 Morning Briefing</h2>
+  <p>ARIA leads the full team briefing using live Shopify data — revenue, inventory, abandoned carts.</p>
+  <button class="btn-yellow" onclick="trigger('daily-briefing', this, 'statusBriefing')">Run Briefing Now</button>
+  <div class="status" id="statusBriefing"></div>
+</div>
+
+<!-- Flash Sale -->
+<div class="card">
+  <h2>⚡ Flash Sale</h2>
+  <p>BLAZE checks active promos and creates a new discount code live on your Shopify store.</p>
+  <button class="btn-red" onclick="trigger('flash-sale', this, 'statusFlash')">Launch Flash Sale</button>
+  <div class="status" id="statusFlash"></div>
+</div>
+
+<!-- Cart Recovery -->
+<div class="card">
+  <h2>🛒 Cart Recovery</h2>
+  <p>HALO scans all abandoned checkouts and builds a recovery plan with a discount code.</p>
+  <button class="btn-blue" onclick="trigger('cart-recovery', this, 'statusCart')">Run Cart Recovery</button>
+  <div class="status" id="statusCart"></div>
+</div>
+
+<!-- Price Audit -->
+<div class="card">
+  <h2>💎 Price Audit</h2>
+  <p>PRISM pulls the full product catalog and gives pricing recommendations.</p>
+  <button class="btn-green" onclick="trigger('price-audit', this, 'statusPrice')">Run Price Audit</button>
+  <div class="status" id="statusPrice"></div>
+</div>
+
+<div class="actions-link">
+  <a href="https://github.com/HD-883/ecommerce-agents/actions" target="_blank">View all agent run logs →</a>
+</div>
+
+<script>
+  const REPO = 'HD-883/ecommerce-agents';
+
+  function saveToken() {
+    const val = document.getElementById('tokenInput').value.trim();
+    if (!val) return;
+    localStorage.setItem('gh_pat', val);
+    document.getElementById('tokenInput').value = '';
+    document.getElementById('savedBadge').style.display = 'inline-block';
+    document.getElementById('setupCard').style.borderColor = '#2d6645';
+  }
+
+  function getToken() {
+    return localStorage.getItem('gh_pat') || '';
+  }
+
+  window.onload = () => {
+    if (getToken()) {
+      document.getElementById('savedBadge').style.display = 'inline-block';
+      document.getElementById('setupCard').style.borderColor = '#2d6645';
+    }
+  };
+
+  async function trigger(workflow, btn, statusId) {
+    const token = getToken();
+    const statusEl = document.getElementById(statusId);
+
+    if (!token) {
+      statusEl.className = 'status show err';
+      statusEl.textContent = '⚠ Paste your GitHub token in the setup box above first.';
+      return;
+    }
+
+    btn.disabled = true;
+    statusEl.className = 'status show loading';
+    statusEl.textContent = '⏳ Dispatching to GitHub Actions…';
+
+    try {
+      const res = await fetch(
+        `https://api.github.com/repos/${REPO}/actions/workflows/${workflow}.yml/dispatches`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/vnd.github+json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ ref: 'master' }),
+        }
+      );
+
+      if (res.status === 204) {
+        statusEl.className = 'status show ok';
+        statusEl.textContent = '✅ Agent dispatched! Check run logs in ~30 seconds.';
+        setTimeout(() => { statusEl.className = 'status'; btn.disabled = false; }, 8000);
+      } else {
+        const body = await res.json().catch(() => ({}));
+        statusEl.className = 'status show err';
+        statusEl.textContent = `✗ Error ${res.status}: ${body.message || 'Check your token has Actions write permission.'}`;
+        btn.disabled = false;
+      }
+    } catch (e) {
+      statusEl.className = 'status show err';
+      statusEl.textContent = `✗ Network error: ${e.message}`;
+      btn.disabled = false;
+    }
+  }
+</script>
+</body>
+</html>
