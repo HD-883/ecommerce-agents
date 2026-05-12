@@ -90,10 +90,50 @@ HALO_TOOLS = [
     },
 ]
 
+LUNA_TOOLS = [
+    {
+        "name": "create_product_listing",
+        "description": (
+            "Create a real, live product listing on the Shopify store. "
+            "The product goes live immediately and is available for purchase. "
+            "Use this to launch new products as part of the passive income strategy."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title":            {"type": "string",  "description": "SEO-optimised product title (under 60 chars)"},
+                "description":      {"type": "string",  "description": "HTML product description with <p> and <ul> tags"},
+                "price":            {"type": "number",  "description": "Retail price in USD, e.g. 29.99"},
+                "compare_at_price": {"type": "number",  "description": "Original price for strikethrough display (optional)"},
+                "product_type":     {"type": "string",  "description": "Category, e.g. 'Apparel', 'Home Decor', 'Kitchen'"},
+                "tags":             {"type": "array",   "items": {"type": "string"}, "description": "List of tags for search and filtering"},
+                "sku":              {"type": "string",  "description": "Stock keeping unit code (optional, auto-generated if omitted)"},
+            },
+            "required": ["title", "description", "price"],
+        },
+    },
+    {
+        "name": "get_store_collections",
+        "description": "List all product collections in the Shopify store for categorisation.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_products_with_prices",
+        "description": "Get the current product catalog to avoid duplicates and understand what's already listed.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "Max products to return (default 50)"},
+            },
+        },
+    },
+]
+
 TOOLS_BY_AGENT = {
     "BLAZE": BLAZE_TOOLS,
     "PRISM": PRISM_TOOLS,
     "HALO":  HALO_TOOLS,
+    "LUNA":  LUNA_TOOLS,
 }
 
 
@@ -161,5 +201,22 @@ class ToolRunner:
                 "count": len(checkouts),
                 "total_recoverable_value": round(total_value, 2),
             }
+
+        if tool_name == "create_product_listing":
+            tags = inputs.get("tags", [])
+            if isinstance(tags, str):
+                tags = [t.strip() for t in tags.split(",")]
+            return self.actions.create_product(
+                title=inputs["title"],
+                description=inputs["description"],
+                price=inputs["price"],
+                product_type=inputs.get("product_type", ""),
+                tags=tags,
+                compare_at_price=inputs.get("compare_at_price"),
+                sku=inputs.get("sku"),
+            )
+
+        if tool_name == "get_store_collections":
+            return {"collections": self.actions.get_collections()}
 
         return {"error": f"Unknown tool: {tool_name}"}
