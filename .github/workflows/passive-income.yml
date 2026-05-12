@@ -2,8 +2,8 @@ name: Passive Income Pipeline
 
 on:
   schedule:
-    # Every day at 8:00 PM Pakistan Standard Time (PKT = UTC+5) = 15:00 UTC
-    - cron: '0 15 * * *'
+    # Every day at 7:30 PM Eastern Standard Time (EST = UTC-5) = 00:30 UTC
+    - cron: '30 0 * * *'
   workflow_dispatch:
     inputs:
       niche:
