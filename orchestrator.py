@@ -17,6 +17,7 @@ from agents import AgentFactory, BaseAgent
 from income_ideas import INCOME_IDEAS, QUICK_WINS
 from shopify_client import ShopifyClient
 from agent_tools import TOOLS_BY_AGENT, ToolRunner
+from telegram_notify import TelegramNotifier
 
 console = Console()
 
@@ -35,6 +36,7 @@ class ARIAOrchestrator:
         self.aria = self.agents["ARIA"]
         self.shopify = ShopifyClient()
         self.tool_runner = ToolRunner()
+        self.telegram = TelegramNotifier()
 
     def _load_store_snapshot(self) -> tuple[dict | None, str]:
         """Try to pull live Shopify data. Returns (snapshot, context_string)."""
@@ -206,6 +208,8 @@ class ARIAOrchestrator:
 
         directives = self.aria.think(directives_prompt, max_tokens=400)
         self._print_response(self.aria, directives)
+
+        self.telegram.send(self.telegram.briefing_summary(snap))
 
     # ─────────────────────────────────────────────────────────────────────────
     # INCOME IDEAS EVALUATION
@@ -438,6 +442,7 @@ class ARIAOrchestrator:
         console.print(f"[yellow]Task:[/yellow] {task}\n")
         result = blaze.act(task, tools, self.tool_runner, max_tokens=1200)
         self._print_response(blaze, result)
+        self.telegram.send(self.telegram.flash_sale_summary(result))
 
     def prism_price_audit(self, instruction: str = None):
         """PRISM audits current prices and optionally adjusts them."""
@@ -456,6 +461,7 @@ class ARIAOrchestrator:
         console.print(f"[yellow]Task:[/yellow] {task}\n")
         result = prism.act(task, tools, self.tool_runner, max_tokens=1200)
         self._print_response(prism, result)
+        self.telegram.send(self.telegram.price_audit_summary())
 
     def halo_cart_recovery(self, instruction: str = None):
         """HALO scans abandoned checkouts and builds a recovery plan with a real discount code."""
@@ -475,6 +481,7 @@ class ARIAOrchestrator:
         console.print(f"[yellow]Task:[/yellow] {task}\n")
         result = halo.act(task, tools, self.tool_runner, max_tokens=1500)
         self._print_response(halo, result)
+        self.telegram.send(self.telegram.cart_recovery_summary(snap if hasattr(self, '_last_snap') else None))
 
     # ─────────────────────────────────────────────────────────────────────────
     # FULL RUN
