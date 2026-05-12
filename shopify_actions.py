@@ -181,6 +181,78 @@ class ShopifyActions:
             })
         return results
 
+    # ── Product Creation ──────────────────────────────────────────────────────
+
+    def create_product(
+        self,
+        title: str,
+        description: str,
+        price: float,
+        product_type: str = "",
+        tags: list[str] = None,
+        vendor: str = "Legacy Commerce",
+        compare_at_price: float = None,
+        sku: str = None,
+        weight_grams: int = 200,
+        images: list[str] = None,
+    ) -> dict:
+        """Create a new product listing on Shopify."""
+        variant: dict = {
+            "price": str(price),
+            "inventory_management": "shopify",
+            "inventory_quantity": 999,
+            "weight": weight_grams,
+            "weight_unit": "g",
+            "fulfillment_service": "manual",
+        }
+        if compare_at_price:
+            variant["compare_at_price"] = str(compare_at_price)
+        if sku:
+            variant["sku"] = sku
+
+        payload: dict = {
+            "product": {
+                "title": title,
+                "body_html": description,
+                "vendor": vendor,
+                "product_type": product_type,
+                "tags": ", ".join(tags or []),
+                "status": "active",
+                "variants": [variant],
+            }
+        }
+        if images:
+            payload["product"]["images"] = [{"src": url} for url in images[:5]]
+
+        result = self._post("products.json", payload)
+        p = result.get("product", {})
+        variant_data = p.get("variants", [{}])[0]
+        return {
+            "success": True,
+            "product_id": p.get("id"),
+            "title": p.get("title"),
+            "handle": p.get("handle"),
+            "status": p.get("status"),
+            "variant_id": variant_data.get("id"),
+            "price": variant_data.get("price"),
+            "shopify_url": f"https://{self.store_url}/products/{p.get('handle')}",
+            "admin_url": f"https://{self.store_url}/admin/products/{p.get('id')}",
+        }
+
+    def get_collections(self) -> list:
+        """List all custom collections."""
+        data = self._get("custom_collections.json", {"limit": 50})
+        return [
+            {"id": c["id"], "title": c["title"], "handle": c["handle"]}
+            for c in data.get("custom_collections", [])
+        ]
+
+    def add_product_to_collection(self, product_id: int, collection_id: int) -> dict:
+        """Add a product to a collection."""
+        payload = {"collect": {"product_id": product_id, "collection_id": collection_id}}
+        result = self._post("collects.json", payload)
+        return {"success": True, "collect_id": result.get("collect", {}).get("id")}
+
     # ── Draft Orders ──────────────────────────────────────────────────────────
 
     def create_draft_order(

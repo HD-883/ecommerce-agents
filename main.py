@@ -17,6 +17,16 @@ Agent Actions (require Shopify write scopes):
   python main.py --flash-sale      → BLAZE creates a real flash sale discount code
   python main.py --price-audit     → PRISM audits and reports on product pricing
   python main.py --cart-recovery   → HALO scans abandoned carts + creates recovery code
+
+Passive Income Engine (agents autonomously list + market real products):
+  python main.py --passive-income              → Full pipeline: niche → ideas → listings → marketing
+  python main.py --passive-income --niche TEXT → Specify the product niche (e.g. "outdoor gear")
+  python main.py --passive-income --count N    → Number of products to create (default 5)
+  python main.py --passive-income --printful   → Use Printful for print-on-demand fulfillment
+  python main.py --passive-income --dry-run    → Generate all content but skip Shopify API calls
+  python main.py --create-products             → LUNA uses tool-calling to directly create listings
+  python main.py --create-products --niche TEXT --count N  → Specify niche + count for LUNA
+  python main.py --printful-catalog            → Show Printful POD products + profit margins
 """
 
 import sys
@@ -157,6 +167,11 @@ def main():
         console.print(__doc__)
         return
 
+    if "--printful-catalog" in args:
+        from printful_client import PrintfulClient
+        console.print(PrintfulClient.catalog_summary())
+        return
+
     # Interactive chat
     if "--chat" in args:
         idx = args.index("--chat")
@@ -195,6 +210,39 @@ def main():
         manager.prism_price_audit()
     elif "--cart-recovery" in args:
         manager.halo_cart_recovery()
+    elif "--passive-income" in args:
+        niche = None
+        count = 5
+        use_printful = "--printful" in args
+        dry_run = "--dry-run" in args
+        if "--niche" in args:
+            idx = args.index("--niche")
+            if idx + 1 < len(args):
+                niche = args[idx + 1]
+        if "--count" in args:
+            idx = args.index("--count")
+            if idx + 1 < len(args):
+                try:
+                    count = int(args[idx + 1])
+                except ValueError:
+                    pass
+        manager.launch_passive_income(niche=niche, count=count,
+                                      use_printful=use_printful, dry_run=dry_run)
+    elif "--create-products" in args:
+        niche = None
+        count = 3
+        if "--niche" in args:
+            idx = args.index("--niche")
+            if idx + 1 < len(args):
+                niche = args[idx + 1]
+        if "--count" in args:
+            idx = args.index("--count")
+            if idx + 1 < len(args):
+                try:
+                    count = int(args[idx + 1])
+                except ValueError:
+                    pass
+        manager.luna_create_products(niche=niche, count=count)
     else:
         # Full session — the complete workflow
         manager.run_full_session()

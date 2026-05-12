@@ -18,6 +18,8 @@ from income_ideas import INCOME_IDEAS, QUICK_WINS
 from shopify_client import ShopifyClient
 from agent_tools import TOOLS_BY_AGENT, ToolRunner
 from telegram_notify import TelegramNotifier
+from product_pipeline import PassiveIncomePipeline
+from printful_client import PrintfulClient
 
 console = Console()
 
@@ -419,6 +421,69 @@ class ARIAOrchestrator:
             max_tokens=200,
         )
         self._print_response(self.aria, feedback)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # PASSIVE INCOME — AUTONOMOUS PRODUCT CREATION
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def launch_passive_income(
+        self,
+        niche: str = None,
+        count: int = 5,
+        use_printful: bool = False,
+        dry_run: bool = False,
+    ):
+        """
+        Full passive income pipeline: agents research a niche, generate product ideas,
+        write SEO listings, set prices, create them live in Shopify, and produce
+        launch marketing content. Runs end-to-end autonomously.
+        """
+        pipeline = PassiveIncomePipeline(
+            api_key=os.environ.get("ANTHROPIC_API_KEY")
+        )
+        pipeline.run(
+            niche=niche,
+            count=count,
+            use_printful=use_printful,
+            dry_run=dry_run,
+        )
+
+    def luna_create_products(self, niche: str = None, count: int = 3):
+        """
+        LUNA uses tool-calling to directly create product listings in Shopify.
+        More interactive than the pipeline — LUNA reasons about the catalog first
+        then creates products one by one with full context.
+        """
+        self._section("LUNA — AUTONOMOUS PRODUCT CREATION")
+        luna  = self.agents["LUNA"]
+        tools = TOOLS_BY_AGENT["LUNA"]
+
+        niche_hint = f" Focus on the '{niche}' niche." if niche else ""
+        task = (
+            f"You are launching a passive income product line for Legacy Commerce right now.{niche_hint}\n\n"
+            f"Step 1: Check what products we already have (use get_products_with_prices) to avoid duplicates.\n"
+            f"Step 2: Create {count} new, real product listings using create_product_listing. "
+            f"Each product must have:\n"
+            f"  - A keyword-rich title under 60 characters\n"
+            f"  - A full HTML description (use <p> and <ul> tags, 150+ words, include benefits and CTA)\n"
+            f"  - A retail price between $19.99 and $79.99 (psychological pricing)\n"
+            f"  - A compare_at_price 25-35% higher to show a sale\n"
+            f"  - Relevant tags for search\n"
+            f"  - A product_type category\n\n"
+            f"Step 3: After creating all {count} products, summarize what you created, "
+            f"the total potential revenue if each sells 20 units/month, "
+            f"and your top recommendation for promoting the collection.\n\n"
+            f"Go live immediately. This is real revenue generation."
+        )
+
+        console.print(f"[yellow]LUNA's mission:[/yellow] Create {count} live products"
+                      + (f" in '{niche}' niche" if niche else "") + "\n")
+        result = luna.act(task, tools, self.tool_runner, max_tokens=2500, max_iters=10)
+        self._print_response(luna, result)
+        self.telegram.send(
+            f"🌙 *LUNA — Products Created*\n━━━━━━━━━━━━━━━━━\n{result[:400]}...\n\n"
+            f"[View store →](https://github.com/HD-883/ecommerce-agents/actions)"
+        )
 
     # ─────────────────────────────────────────────────────────────────────────
     # AGENT ACTIONS — REAL SHOPIFY OPERATIONS
