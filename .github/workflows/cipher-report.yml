@@ -1,22 +1,28 @@
-name: Cart Recovery (HALO)
+name: Weekly Analytics Report (CIPHER)
 
 on:
   schedule:
-    # 7:00 PM Pakistan Standard Time (PKT = UTC+5) = 14:00 UTC
-    - cron: '0 14 * * *'
+    # Every Friday at 5:00 PM Pakistan Standard Time (PKT = UTC+5) = 12:00 UTC
+    # CIPHER delivers the weekly numbers before the weekend
+    - cron: '0 12 * * 5'
   workflow_dispatch:
 
 jobs:
-  cart-recovery:
+  cipher-report:
+    name: "CIPHER pulls live analytics"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+
       - run: pip install -r requirements.txt
-      - name: HALO scans abandoned carts
+
+      - name: CIPHER analytics report
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SHOPIFY_STORE_URL: ${{ secrets.SHOPIFY_STORE_URL }}
@@ -24,4 +30,4 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           PYTHONUTF8: "1"
-        run: python main.py --cart-recovery
+        run: python main.py --cipher-report

@@ -129,11 +129,69 @@ LUNA_TOOLS = [
     },
 ]
 
+CIPHER_TOOLS = [
+    {
+        "name": "get_revenue_by_day",
+        "description": (
+            "Get daily revenue breakdown for the last N days. "
+            "Use this to spot trends, identify best/worst days, and calculate growth rate."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "days": {"type": "integer", "description": "Number of days to look back (default 30, max 90)"},
+            },
+        },
+    },
+    {
+        "name": "get_top_products_by_revenue",
+        "description": (
+            "Get the top products ranked by revenue over the last N days. "
+            "Use this to identify winners to promote and losers to cut or reprice."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "days":  {"type": "integer", "description": "Lookback period in days (default 30)"},
+                "limit": {"type": "integer", "description": "Number of top products to return (default 10)"},
+            },
+        },
+    },
+    {
+        "name": "get_conversion_funnel",
+        "description": (
+            "Get conversion funnel metrics: completed orders vs abandoned carts, "
+            "conversion rate, and the dollar value sitting in abandoned carts right now."
+        ),
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_channel_snapshot",
+        "description": (
+            "Get a full store health snapshot: revenue (7d and 30d), order counts, "
+            "AOV, customer counts, and estimated repeat rate. "
+            "Use this as the starting point for any analytics report."
+        ),
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_products_with_prices",
+        "description": "Get the full product catalog with prices and inventory levels.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "Max products to return (default 50)"},
+            },
+        },
+    },
+]
+
 TOOLS_BY_AGENT = {
-    "BLAZE": BLAZE_TOOLS,
-    "PRISM": PRISM_TOOLS,
-    "HALO":  HALO_TOOLS,
-    "LUNA":  LUNA_TOOLS,
+    "BLAZE":  BLAZE_TOOLS,
+    "PRISM":  PRISM_TOOLS,
+    "HALO":   HALO_TOOLS,
+    "LUNA":   LUNA_TOOLS,
+    "CIPHER": CIPHER_TOOLS,
 }
 
 
@@ -218,5 +276,22 @@ class ToolRunner:
 
         if tool_name == "get_store_collections":
             return {"collections": self.actions.get_collections()}
+
+        if tool_name == "get_revenue_by_day":
+            return self.actions.get_revenue_by_day(days=min(inputs.get("days", 30), 90))
+
+        if tool_name == "get_top_products_by_revenue":
+            return {
+                "top_products": self.actions.get_top_products_by_revenue(
+                    days=inputs.get("days", 30),
+                    limit=inputs.get("limit", 10),
+                )
+            }
+
+        if tool_name == "get_conversion_funnel":
+            return self.actions.get_conversion_funnel()
+
+        if tool_name == "get_channel_snapshot":
+            return self.actions.get_channel_snapshot()
 
         return {"error": f"Unknown tool: {tool_name}"}
