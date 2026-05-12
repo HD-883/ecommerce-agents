@@ -59,9 +59,9 @@ BEHAVIOR RULES:
 - When you disagree with something, say so professionally
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
-    def _call(self, messages: list[dict], max_tokens: int = 800) -> str:
+    def _call(self, messages: list[dict], max_tokens: int = 800, use_thinking: bool = True) -> str:
         thinking_config = (
-            {"type": "adaptive"} if self.level == "C-Suite" else None
+            {"type": "adaptive"} if (self.level == "C-Suite" and use_thinking) else None
         )
         kwargs = {
             "model": self.model,
@@ -122,9 +122,9 @@ BEHAVIOR RULES:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def think(self, prompt: str, max_tokens: int = 800) -> str:
+    def think(self, prompt: str, max_tokens: int = 800, use_thinking: bool = True) -> str:
         """Single-turn thought — no conversation memory."""
-        return self._call([{"role": "user", "content": prompt}], max_tokens)
+        return self._call([{"role": "user", "content": prompt}], max_tokens, use_thinking)
 
     def chat(self, message: str) -> str:
         """Multi-turn chat with persistent conversation memory."""
