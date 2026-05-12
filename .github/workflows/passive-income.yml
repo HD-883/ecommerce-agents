@@ -2,9 +2,8 @@ name: Passive Income Pipeline
 
 on:
   schedule:
-    # Every Sunday at 9:00 AM Pakistan Standard Time (PKT = UTC+5) = 4:00 AM UTC
-    # Agents autonomously create a new product drop every week
-    - cron: '0 4 * * 0'
+    # Every day at 8:00 PM Pakistan Standard Time (PKT = UTC+5) = 15:00 UTC
+    - cron: '0 15 * * *'
   workflow_dispatch:
     inputs:
       niche:
