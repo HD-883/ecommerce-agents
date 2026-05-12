@@ -6,6 +6,9 @@ Each agent wraps the Anthropic SDK with a unique personality and domain expertis
 import anthropic
 from config import AGENT_CONFIGS, BUSINESS_CONTEXT
 
+# Retry up to 5 times on overload/rate-limit errors (exponential backoff built into SDK)
+_DEFAULT_MAX_RETRIES = 5
+
 
 class BaseAgent:
     """
@@ -210,6 +213,11 @@ This is your training session — show your expertise."""
 
 class AgentFactory:
     """Creates and manages the full fleet of Legacy Commerce agents."""
+
+    @staticmethod
+    def make_client(api_key: str = None) -> anthropic.Anthropic:
+        """Create an Anthropic client with retry logic for overload errors."""
+        return anthropic.Anthropic(api_key=api_key, max_retries=_DEFAULT_MAX_RETRIES)
 
     @staticmethod
     def create_all(client: anthropic.Anthropic) -> dict[str, BaseAgent]:
