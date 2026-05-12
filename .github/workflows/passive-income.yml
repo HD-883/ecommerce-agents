@@ -2,8 +2,8 @@ name: Passive Income Pipeline
 
 on:
   schedule:
-    # Every day at 8:00 PM Pakistan Standard Time (PKT = UTC+5) = 15:00 UTC
-    - cron: '0 15 * * *'
+    # Every day at 7:30 PM Eastern Standard Time (EST = UTC-5) = 00:30 UTC
+    - cron: '30 0 * * *'
   workflow_dispatch:
     inputs:
       niche:
@@ -52,16 +52,23 @@ jobs:
       - name: Build passive income command
         id: cmd
         run: |
-          CMD="python main.py --passive-income"
+          # Scheduled runs: Printful on, 3 products (budget-conscious default)
+          # Manual runs: use whatever inputs were provided
+          IS_SCHEDULED="${{ github.event_name == 'schedule' }}"
           NICHE="${{ github.event.inputs.niche }}"
           COUNT="${{ github.event.inputs.count }}"
           PRINTFUL="${{ github.event.inputs.use_printful }}"
           DRY="${{ github.event.inputs.dry_run }}"
 
-          if [ -n "$NICHE" ]; then CMD="$CMD --niche \"$NICHE\""; fi
-          if [ -n "$COUNT" ] && [ "$COUNT" != "5" ]; then CMD="$CMD --count $COUNT"; fi
-          if [ "$PRINTFUL" = "true" ]; then CMD="$CMD --printful"; fi
-          if [ "$DRY" = "true" ]; then CMD="$CMD --dry-run"; fi
+          if [ "$IS_SCHEDULED" = "true" ]; then
+            CMD="python main.py --passive-income --printful --count 3"
+          else
+            CMD="python main.py --passive-income"
+            if [ -n "$NICHE" ]; then CMD="$CMD --niche \"$NICHE\""; fi
+            if [ -n "$COUNT" ] && [ "$COUNT" != "5" ]; then CMD="$CMD --count $COUNT"; fi
+            if [ "$PRINTFUL" = "true" ]; then CMD="$CMD --printful"; fi
+            if [ "$DRY" = "true" ]; then CMD="$CMD --dry-run"; fi
+          fi
 
           echo "command=$CMD" >> $GITHUB_OUTPUT
           echo "Running: $CMD"

@@ -49,6 +49,8 @@ class ProductConcept:
     seo_description: str = ""
     social_post: str = ""
     shopify_result: dict = field(default_factory=dict)
+    base_cost: float = 0.0      # Printful base cost (0 if not POD)
+    gross_margin_pct: float = 0.0
 
 
 class PassiveIncomePipeline:
@@ -296,16 +298,29 @@ class PassiveIncomePipeline:
         prism = self.agents["PRISM"]
         console.print(Rule("[bold yellow]STAGE 4 — PRISM: PRICING STRATEGY[/bold yellow]"))
 
+        # Resolve Printful base costs and enforce minimum 50% gross margin
+        for c in concepts:
+            if use_printful and c.printful_key and c.printful_key in PRINTFUL_CATALOG:
+                c.base_cost = PRINTFUL_CATALOG[c.printful_key]["base_cost"]
+            else:
+                c.base_cost = 0.0
+
         printful_costs = ""
         if use_printful:
             cost_lines = []
             for c in concepts:
-                if c.printful_key and c.printful_key in PRINTFUL_CATALOG:
-                    base = PRINTFUL_CATALOG[c.printful_key]["base_cost"]
+                if c.base_cost:
+                    min_price = round(c.base_cost / 0.50, 2)   # enforce 50% margin floor
                     suggested = PC.suggested_retail_price(c.printful_key)
-                    cost_lines.append(f"  {c.name}: base cost ${base:.2f}, suggested ${suggested:.2f}")
+                    cost_lines.append(
+                        f"  {c.name}: Printful base ${c.base_cost:.2f} | "
+                        f"min price for 50% margin: ${min_price:.2f} | suggested: ${suggested:.2f}"
+                    )
             if cost_lines:
-                printful_costs = "\n\nPrintful base costs (must cover these + 40%+ margin):\n" + "\n".join(cost_lines)
+                printful_costs = (
+                    "\n\nPrintful base costs — HARD RULE: price must be at least 2× the base cost "
+                    "(50% gross margin minimum). Never price below this.\n" + "\n".join(cost_lines)
+                )
 
         products_list = "\n".join(
             f"{i+1}. {c.name} | Type: {c.product_type} | Buyer: {c.target_buyer}"
@@ -314,9 +329,9 @@ class PassiveIncomePipeline:
 
         prompt = (
             f"Set retail prices for these {len(concepts)} products. "
-            f"We target 40-60% gross margin. Use psychological pricing ($X.99 or $X.95). "
-            f"Also set a compare_at_price (original price) for each to create a 'sale' effect — "
-            f"set it 20-35% above the selling price.\n\n"
+            f"Budget rules: minimum 50% gross margin on every product. "
+            f"Use psychological pricing ($X.99 or $X.95). "
+            f"Also set a compare_at_price 25-35% above the selling price for a 'sale' display.\n\n"
             f"{products_list}"
             f"{printful_costs}\n\n"
             f"Return EXACTLY this JSON:\n"
@@ -334,26 +349,44 @@ class PassiveIncomePipeline:
                 pricing = json.loads(json_match.group())
                 for i, p in enumerate(pricing):
                     if i < len(concepts):
-                        concepts[i].price = float(p.get("price", 29.99))
+                        concepts[i].price      = float(p.get("price", 29.99))
                         concepts[i].compare_at = float(p.get("compare_at", 0))
         except (json.JSONDecodeError, AttributeError):
-            console.print("[yellow]⚠ Pricing JSON parse failed — using defaults[/yellow]")
+            console.print("[yellow]⚠ Pricing JSON parse failed — using Printful suggested prices[/yellow]")
             for c in concepts:
                 if not c.price:
-                    c.price = 29.99
+                    c.price = PC.suggested_retail_price(c.printful_key) if c.printful_key else 29.99
+
+        # Enforce 50% margin floor — override any price PRISM set below the minimum
+        for c in concepts:
+            if c.base_cost and c.price < c.base_cost * 2:
+                c.price = round(c.base_cost * 2 + 0.99, 2)
+                console.print(f"[yellow]⚠ {c.name}: price raised to ${c.price:.2f} to maintain 50% margin[/yellow]")
+
+        # Calculate actual margins
+        for c in concepts:
+            if c.base_cost and c.price:
+                c.gross_margin_pct = round((1 - c.base_cost / c.price) * 100, 1)
 
         table = Table(box=box.SIMPLE, show_header=True, header_style="bold magenta")
-        table.add_column("Product",         style="cyan", width=32)
-        table.add_column("Price",           style="bold green", width=10)
-        table.add_column("Compare At",      style="dim", width=12)
-        table.add_column("Discount Shown",  style="yellow", width=14)
+        table.add_column("Product",      style="cyan",       width=28)
+        table.add_column("Base Cost",    style="dim",        width=10)
+        table.add_column("Price",        style="bold green", width=10)
+        table.add_column("Compare At",   style="dim",        width=12)
+        table.add_column("Margin",       style="bold cyan",  width=10)
+        table.add_column("Profit/Unit",  style="green",      width=12)
 
         for c in concepts:
-            discount = ""
-            if c.compare_at and c.compare_at > c.price:
-                pct = int((1 - c.price / c.compare_at) * 100)
-                discount = f"{pct}% off"
-            table.add_row(c.name, f"${c.price:.2f}", f"${c.compare_at:.2f}" if c.compare_at else "—", discount)
+            profit = c.price - c.base_cost if c.base_cost else 0
+            margin_str = f"{c.gross_margin_pct:.0f}%" if c.gross_margin_pct else "—"
+            table.add_row(
+                c.name[:26],
+                f"${c.base_cost:.2f}" if c.base_cost else "—",
+                f"${c.price:.2f}",
+                f"${c.compare_at:.2f}" if c.compare_at else "—",
+                margin_str,
+                f"${profit:.2f}" if profit else "—",
+            )
 
         console.print(table)
         console.print()
@@ -445,28 +478,41 @@ class PassiveIncomePipeline:
     # ─────────────────────────────────────────────────────────────────────────
 
     def _stage_summary(self, concepts: list[ProductConcept], niche: str, dry_run: bool):
-        console.print(Rule("[bold yellow]PIPELINE COMPLETE — REVENUE SUMMARY[/bold yellow]"))
+        console.print(Rule("[bold yellow]PIPELINE COMPLETE — REVENUE & COST SUMMARY[/bold yellow]"))
 
-        created   = [c for c in concepts if c.shopify_result.get("success")]
-        total_rev = sum(c.price for c in concepts)
-        avg_price = total_rev / len(concepts) if concepts else 0
+        created      = [c for c in concepts if c.shopify_result.get("success")]
+        total_rev    = sum(c.price for c in concepts)
+        total_cost   = sum(c.base_cost for c in concepts)
+        total_profit = total_rev - total_cost
+        avg_margin   = (total_profit / total_rev * 100) if total_rev else 0
+        avg_price    = total_rev / len(concepts) if concepts else 0
+
+        # Estimated Claude API cost for this run (rough but honest)
+        # Opus: $15/$75 per M tokens in/out | Sonnet: $3/$15 | Haiku: $0.80/$4
+        estimated_api_cost = round(len(concepts) * 0.04 + 0.12, 2)
 
         table = Table(box=box.ROUNDED, show_header=True, header_style="bold magenta", title="Products Created")
-        table.add_column("Product",    style="cyan",       width=32)
-        table.add_column("Price",      style="bold green", width=8)
-        table.add_column("Compare At", style="dim",        width=10)
-        table.add_column("Status",     style="white",      width=10)
-        table.add_column("URL",        style="dim",        width=40)
+        table.add_column("Product",     style="cyan",       width=28)
+        table.add_column("Base Cost",   style="dim",        width=10)
+        table.add_column("Price",       style="bold green", width=8)
+        table.add_column("Profit/Unit", style="green",      width=12)
+        table.add_column("Margin",      style="cyan",       width=8)
+        table.add_column("Status",      style="white",      width=10)
+        table.add_column("URL",         style="dim",        width=36)
 
         for c in concepts:
             status = "[green]LIVE[/green]" if c.shopify_result.get("success") else (
                 "[yellow]DRY RUN[/yellow]" if dry_run else "[red]FAILED[/red]"
             )
-            url = c.shopify_result.get("shopify_url", "—") if not dry_run else "—"
+            url    = c.shopify_result.get("shopify_url", "—") if not dry_run else "—"
+            profit = c.price - c.base_cost if c.base_cost else 0
+            table.row_styles = []
             table.add_row(
-                c.name[:30],
+                c.name[:26],
+                f"${c.base_cost:.2f}" if c.base_cost else "—",
                 f"${c.price:.2f}",
-                f"${c.compare_at:.2f}" if c.compare_at else "—",
+                f"${profit:.2f}" if profit else "—",
+                f"{c.gross_margin_pct:.0f}%" if c.gross_margin_pct else "—",
                 status,
                 url,
             )
@@ -475,33 +521,61 @@ class PassiveIncomePipeline:
         console.print(
             f"\n[bold]Niche:[/bold] {niche}\n"
             f"[bold]Products:[/bold] {len(concepts)} generated · {len(created)} live\n"
-            f"[bold]Avg price:[/bold] ${avg_price:.2f}\n"
-            f"[bold]Potential revenue (if all sell 10x):[/bold] "
-            f"[bold green]${total_rev * 10:,.2f}[/bold green]\n"
+            f"[bold]Avg price:[/bold] ${avg_price:.2f}  ·  "
+            f"[bold]Avg margin:[/bold] {avg_margin:.0f}%\n"
+        )
+
+        console.print(
+            Panel(
+                f"[bold]COST BREAKDOWN — THIS RUN[/bold]\n\n"
+                f"  Claude API (estimated):     ~${estimated_api_cost:.2f}\n"
+                f"  Printful base costs:         $0.00  (only charged when orders are fulfilled)\n"
+                f"  Total run cost:             ~${estimated_api_cost:.2f}\n\n"
+                f"[bold]IF ALL {len(concepts)} PRODUCTS SELL 10 UNITS EACH[/bold]\n\n"
+                f"  Gross revenue:              ${total_rev * 10:,.2f}\n"
+                f"  Printful fulfilment costs:  ${total_cost * 10:,.2f}\n"
+                f"  Net profit:                 [bold green]${total_profit * 10:,.2f}[/bold green]\n"
+                f"  Return on API spend:        "
+                f"[bold green]{int((total_profit * 10) / estimated_api_cost)}×[/bold green]",
+                title="[yellow]💰 Budget Intelligence[/yellow]",
+                border_style="yellow",
+            )
         )
 
         msg = self._telegram_summary(concepts, niche, dry_run)
         self.telegram.send(msg)
 
     def _telegram_summary(self, concepts: list[ProductConcept], niche: str, dry_run: bool) -> str:
-        created = sum(1 for c in concepts if c.shopify_result.get("success"))
+        created      = sum(1 for c in concepts if c.shopify_result.get("success"))
+        total_rev    = sum(c.price for c in concepts)
+        total_cost   = sum(c.base_cost for c in concepts)
+        net_per_sale = total_rev - total_cost
+        api_cost     = round(len(concepts) * 0.04 + 0.12, 2)
+
         lines = [
             f"🤖 *Passive Income Pipeline — {'DRY RUN' if dry_run else 'LIVE'}*",
             f"━━━━━━━━━━━━━━━━━",
             f"📦 Niche: *{niche}*",
-            f"✅ Products created: *{created}/{len(concepts)}*",
+            f"✅ Products live: *{created}/{len(concepts)}*",
             "",
         ]
         for c in concepts:
-            url = c.shopify_result.get("shopify_url")
+            url    = c.shopify_result.get("shopify_url")
             status = "✅" if c.shopify_result.get("success") else ("🔄" if dry_run else "❌")
-            line = f"{status} {c.name} — *${c.price:.2f}*"
+            profit = c.price - c.base_cost if c.base_cost else 0
+            margin = f" _{c.gross_margin_pct:.0f}% margin_" if c.gross_margin_pct else ""
+            line   = f"{status} {c.name} — *${c.price:.2f}*{margin}"
             if url:
                 line += f"\n   [View →]({url})"
             lines.append(line)
 
         lines += [
             "",
-            f"[View store →](https://github.com/HD-883/ecommerce-agents/actions)",
+            f"💰 *Budget summary*",
+            f"  API cost this run: ~${api_cost:.2f}",
+            f"  Printful cost per full sell-through: ${total_cost:.2f}",
+            f"  Net profit if all sell once: *${net_per_sale:.2f}*",
+            "",
+            f"[View Actions →](https://github.com/HD-883/ecommerce-agents/actions)",
         ]
         return "\n".join(lines)
