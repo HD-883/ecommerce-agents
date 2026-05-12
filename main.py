@@ -27,6 +27,7 @@ Passive Income Engine (agents autonomously list + market real products):
   python main.py --create-products             → LUNA uses tool-calling to directly create listings
   python main.py --create-products --niche TEXT --count N  → Specify niche + count for LUNA
   python main.py --printful-catalog            → Show Printful POD products + profit margins
+  python main.py --cipher-report               → CIPHER pulls live analytics + full performance report
 """
 
 import sys
@@ -243,6 +244,8 @@ def main():
                 except ValueError:
                     pass
         manager.luna_create_products(niche=niche, count=count)
+    elif "--cipher-report" in args:
+        manager.cipher_report()
     else:
         # Full session — the complete workflow
         manager.run_full_session()

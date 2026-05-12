@@ -282,3 +282,120 @@ class ShopifyActions:
             "invoice_url": d.get("invoice_url"),
             "total_price": d.get("total_price"),
         }
+
+    # ── Analytics (CIPHER) ────────────────────────────────────────────────────
+
+    def get_revenue_by_day(self, days: int = 30) -> dict:
+        """Daily revenue breakdown for the last N days."""
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        data  = self._get("orders.json", {
+            "status": "any",
+            "financial_status": "paid",
+            "created_at_min": since,
+            "limit": 250,
+            "fields": "created_at,total_price",
+        })
+        daily: dict[str, float] = {}
+        for order in data.get("orders", []):
+            day = order["created_at"][:10]
+            daily[day] = daily.get(day, 0.0) + float(order.get("total_price", 0))
+
+        total    = sum(daily.values())
+        avg_day  = total / days if days else 0
+        best_day = max(daily.items(), key=lambda x: x[1]) if daily else ("—", 0)
+        return {
+            "period_days":   days,
+            "total_revenue": round(total, 2),
+            "avg_daily":     round(avg_day, 2),
+            "best_day":      best_day[0],
+            "best_day_rev":  round(best_day[1], 2),
+            "daily_breakdown": {k: round(v, 2) for k, v in sorted(daily.items())},
+            "days_with_sales": len(daily),
+        }
+
+    def get_top_products_by_revenue(self, days: int = 30, limit: int = 10) -> list:
+        """Top products by revenue over the last N days."""
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        data  = self._get("orders.json", {
+            "status": "any",
+            "financial_status": "paid",
+            "created_at_min": since,
+            "limit": 250,
+            "fields": "line_items",
+        })
+        product_stats: dict[str, dict] = {}
+        for order in data.get("orders", []):
+            for item in order.get("line_items", []):
+                title = item.get("title", "Unknown")
+                qty   = int(item.get("quantity", 0))
+                rev   = float(item.get("price", 0)) * qty
+                if title not in product_stats:
+                    product_stats[title] = {"revenue": 0.0, "units_sold": 0, "orders": 0}
+                product_stats[title]["revenue"]    += rev
+                product_stats[title]["units_sold"] += qty
+                product_stats[title]["orders"]     += 1
+
+        ranked = sorted(product_stats.items(), key=lambda x: x[1]["revenue"], reverse=True)
+        return [
+            {
+                "rank":        i + 1,
+                "product":     title,
+                "revenue":     round(stats["revenue"], 2),
+                "units_sold":  stats["units_sold"],
+                "avg_price":   round(stats["revenue"] / stats["units_sold"], 2) if stats["units_sold"] else 0,
+            }
+            for i, (title, stats) in enumerate(ranked[:limit])
+        ]
+
+    def get_conversion_funnel(self) -> dict:
+        """Orders vs abandoned carts — basic conversion funnel metrics."""
+        now   = datetime.now(timezone.utc)
+        since = (now - timedelta(days=30)).isoformat()
+
+        orders_data    = self._get("orders.json",   {"status": "any", "created_at_min": since, "limit": 250, "fields": "id,financial_status"})
+        abandoned_data = self._get("checkouts.json",{"limit": 50})
+
+        paid_orders = [o for o in orders_data.get("orders", []) if o.get("financial_status") == "paid"]
+        abandoned   = abandoned_data.get("checkouts", [])
+
+        total_intent   = len(paid_orders) + len(abandoned)
+        conversion_pct = (len(paid_orders) / total_intent * 100) if total_intent else 0
+        recovery_opp   = sum(float(c.get("total_price", 0)) for c in abandoned)
+
+        return {
+            "period_days":           30,
+            "completed_orders":      len(paid_orders),
+            "abandoned_carts":       len(abandoned),
+            "total_checkout_intent": total_intent,
+            "conversion_rate_pct":   round(conversion_pct, 1),
+            "abandoned_value_usd":   round(recovery_opp, 2),
+            "potential_if_50pct_recovered": round(recovery_opp * 0.5, 2),
+        }
+
+    def get_channel_snapshot(self) -> dict:
+        """High-level store health for CIPHER's weekly report."""
+        since_30d = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        since_7d  = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+
+        orders_30d = self._get("orders.json", {"status": "any", "financial_status": "paid",
+                                               "created_at_min": since_30d, "limit": 250,
+                                               "fields": "total_price,created_at"}).get("orders", [])
+        orders_7d  = [o for o in orders_30d if o["created_at"] >= since_7d]
+
+        rev_30d = sum(float(o["total_price"]) for o in orders_30d)
+        rev_7d  = sum(float(o["total_price"]) for o in orders_7d)
+        aov     = rev_30d / len(orders_30d) if orders_30d else 0
+
+        cust_total = self._get("customers/count.json").get("count", 0)
+        cust_new   = self._get("customers/count.json", {"created_at_min": since_30d}).get("count", 0)
+
+        return {
+            "revenue_last_30d":  round(rev_30d, 2),
+            "revenue_last_7d":   round(rev_7d, 2),
+            "orders_last_30d":   len(orders_30d),
+            "orders_last_7d":    len(orders_7d),
+            "avg_order_value":   round(aov, 2),
+            "total_customers":   cust_total,
+            "new_customers_30d": cust_new,
+            "repeat_rate_est":   round(((cust_total - cust_new) / cust_total * 100), 1) if cust_total else 0,
+        }

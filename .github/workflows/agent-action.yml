@@ -1,0 +1,81 @@
+name: Run Any Agent Action
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Which agent action to run'
+        required: true
+        type: choice
+        options:
+          - passive-income
+          - create-products
+          - flash-sale
+          - cart-recovery
+          - price-audit
+          - briefing
+          - cipher-report
+          - ideas
+          - delegate
+          - train
+      niche:
+        description: 'Niche for passive-income / create-products (optional)'
+        required: false
+        default: ''
+      count:
+        description: 'Product count for passive-income / create-products (default: 5)'
+        required: false
+        default: '5'
+      dry_run:
+        description: 'Dry run for passive-income (skip Shopify writes)?'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+jobs:
+  agent-action:
+    name: "${{ github.event.inputs.action }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - run: pip install -r requirements.txt
+
+      - name: Build command
+        id: cmd
+        run: |
+          ACTION="${{ github.event.inputs.action }}"
+          NICHE="${{ github.event.inputs.niche }}"
+          COUNT="${{ github.event.inputs.count }}"
+          DRY="${{ github.event.inputs.dry_run }}"
+
+          CMD="python main.py --$ACTION"
+
+          if [[ "$ACTION" == "passive-income" || "$ACTION" == "create-products" ]]; then
+            if [ -n "$NICHE" ]; then CMD="$CMD --niche \"$NICHE\""; fi
+            if [ -n "$COUNT" ] && [ "$COUNT" != "5" ]; then CMD="$CMD --count $COUNT"; fi
+            if [ "$DRY" = "true" ] && [ "$ACTION" = "passive-income" ]; then CMD="$CMD --dry-run"; fi
+          fi
+
+          echo "command=$CMD" >> $GITHUB_OUTPUT
+          echo "Running: $CMD"
+
+      - name: Execute agent action
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SHOPIFY_STORE_URL: ${{ secrets.SHOPIFY_STORE_URL }}
+          SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
+          PRINTFUL_API_KEY: ${{ secrets.PRINTFUL_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PYTHONUTF8: "1"
+        run: eval "${{ steps.cmd.outputs.command }}"

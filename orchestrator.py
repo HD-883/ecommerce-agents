@@ -423,6 +423,44 @@ class ARIAOrchestrator:
         self._print_response(self.aria, feedback)
 
     # ─────────────────────────────────────────────────────────────────────────
+    # CIPHER — ANALYTICS & PERFORMANCE INTELLIGENCE
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def cipher_report(self):
+        """CIPHER pulls live store analytics and delivers a full performance report."""
+        self._section("CIPHER — ANALYTICS INTELLIGENCE REPORT")
+        cipher = self.agents["CIPHER"]
+        tools  = TOOLS_BY_AGENT["CIPHER"]
+
+        task = (
+            "Pull a complete performance report for our store right now. "
+            "Use your tools in this order:\n"
+            "1. get_channel_snapshot — overall health metrics\n"
+            "2. get_revenue_by_day (30 days) — trend analysis\n"
+            "3. get_top_products_by_revenue (30 days, top 10) — winners and losers\n"
+            "4. get_conversion_funnel — where we're losing money\n\n"
+            "After pulling all the data, write a structured Analytics Intelligence Report with:\n"
+            "  EXECUTIVE SUMMARY: 3 key numbers the CEO needs right now\n"
+            "  REVENUE TREND: Is growth accelerating or decelerating? Why?\n"
+            "  TOP PERFORMERS: Which 3 products to double down on and why\n"
+            "  REVENUE LEAKS: Where we're losing money (abandoned carts, slow products)\n"
+            "  CIPHER'S #1 RECOMMENDATION: One specific action with an expected revenue impact\n\n"
+            "Be precise. Use actual numbers from the data. No filler."
+        )
+
+        console.print("[yellow]CIPHER is pulling live store data...[/yellow]\n")
+        result = cipher.act(task, tools, self.tool_runner, max_tokens=2000, max_iters=8)
+        self._print_response(cipher, result)
+
+        msg = (
+            f"📊 *CIPHER Analytics Report*\n"
+            f"━━━━━━━━━━━━━━━━━\n"
+            f"{result[:500]}...\n\n"
+            f"[Full report in Actions →](https://github.com/HD-883/ecommerce-agents/actions)"
+        )
+        self.telegram.send(msg)
+
+    # ─────────────────────────────────────────────────────────────────────────
     # PASSIVE INCOME — AUTONOMOUS PRODUCT CREATION
     # ─────────────────────────────────────────────────────────────────────────
 
