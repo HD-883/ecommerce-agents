@@ -31,9 +31,7 @@ class ARIAOrchestrator:
     """
 
     def __init__(self, api_key: str = None):
-        self.client = anthropic.Anthropic(
-            api_key=api_key or os.environ.get("ANTHROPIC_API_KEY")
-        )
+        self.client = AgentFactory.make_client(api_key or os.environ.get("ANTHROPIC_API_KEY"))
         self.agents = AgentFactory.create_all(self.client)
         self.aria = self.agents["ARIA"]
         self.shopify = ShopifyClient()

@@ -6,6 +6,9 @@ Each agent wraps the Anthropic SDK with a unique personality and domain expertis
 import anthropic
 from config import AGENT_CONFIGS, BUSINESS_CONTEXT
 
+# Retry up to 5 times on overload/rate-limit errors (exponential backoff built into SDK)
+_DEFAULT_MAX_RETRIES = 5
+
 
 class BaseAgent:
     """
@@ -56,9 +59,9 @@ BEHAVIOR RULES:
 - When you disagree with something, say so professionally
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
 
-    def _call(self, messages: list[dict], max_tokens: int = 800) -> str:
+    def _call(self, messages: list[dict], max_tokens: int = 800, use_thinking: bool = True) -> str:
         thinking_config = (
-            {"type": "adaptive"} if self.level == "C-Suite" else None
+            {"type": "adaptive"} if (self.level == "C-Suite" and use_thinking) else None
         )
         kwargs = {
             "model": self.model,
@@ -119,9 +122,9 @@ BEHAVIOR RULES:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def think(self, prompt: str, max_tokens: int = 800) -> str:
+    def think(self, prompt: str, max_tokens: int = 800, use_thinking: bool = True) -> str:
         """Single-turn thought — no conversation memory."""
-        return self._call([{"role": "user", "content": prompt}], max_tokens)
+        return self._call([{"role": "user", "content": prompt}], max_tokens, use_thinking)
 
     def chat(self, message: str) -> str:
         """Multi-turn chat with persistent conversation memory."""
@@ -210,6 +213,11 @@ This is your training session — show your expertise."""
 
 class AgentFactory:
     """Creates and manages the full fleet of Legacy Commerce agents."""
+
+    @staticmethod
+    def make_client(api_key: str = None) -> anthropic.Anthropic:
+        """Create an Anthropic client with retry logic for overload errors."""
+        return anthropic.Anthropic(api_key=api_key, max_retries=_DEFAULT_MAX_RETRIES)
 
     @staticmethod
     def create_all(client: anthropic.Anthropic) -> dict[str, BaseAgent]:

@@ -60,9 +60,7 @@ class PassiveIncomePipeline:
     """
 
     def __init__(self, api_key: str = None):
-        self.client = anthropic.Anthropic(
-            api_key=api_key or os.environ.get("ANTHROPIC_API_KEY")
-        )
+        self.client = AgentFactory.make_client(api_key or os.environ.get("ANTHROPIC_API_KEY"))
         self.agents  = AgentFactory.create_all(self.client)
         self.shopify = ShopifyActions()
         self.printful = PrintfulClient()
@@ -145,7 +143,7 @@ class PassiveIncomePipeline:
                 "and state the exact product category. Start your response with 'NICHE: [name]'."
             )
 
-        strategy = aria.think(prompt, max_tokens=300)
+        strategy = aria.think(prompt, max_tokens=300, use_thinking=False)
         console.print(Panel(strategy, title="[cyan]👩‍💼 ARIA — Strategy[/cyan]", border_style="cyan"))
 
         if not niche:
@@ -193,7 +191,7 @@ class PassiveIncomePipeline:
             f"Think commercial, specific, trend-aware. No generic products."
         )
 
-        raw = luna.think(prompt, max_tokens=1200)
+        raw = luna.think(prompt, max_tokens=1200, use_thinking=False)
 
         concepts = []
         try:
@@ -271,7 +269,7 @@ class PassiveIncomePipeline:
             f"Legacy Commerce is a trusted 50-year brand — use that credibility."
         )
 
-        raw = echo.think(prompt, max_tokens=2500)
+        raw = echo.think(prompt, max_tokens=2500, use_thinking=False)
 
         try:
             json_match = re.search(r'\[[\s\S]*\]', raw)
@@ -341,7 +339,7 @@ class PassiveIncomePipeline:
             f"One object per product, same order as the list. Numbers only, no strings."
         )
 
-        raw = prism.think(prompt, max_tokens=600)
+        raw = prism.think(prompt, max_tokens=600, use_thinking=False)
 
         try:
             json_match = re.search(r'\[[\s\S]*?\]', raw)

@@ -117,9 +117,8 @@ def print_idea_list():
 def chat_with_agent(agent_id: str):
     check_api_key()
     from agents import AgentFactory
-    import anthropic
 
-    client = anthropic.Anthropic()
+    client = AgentFactory.make_client()
     try:
         agent = AgentFactory.create_agent(agent_id.upper(), client)
     except ValueError as e:
