@@ -31,6 +31,8 @@ from shopify_actions import ShopifyActions
 from printful_client import PrintfulClient, PRINTFUL_CATALOG, PrintfulClient as PC
 from telegram_notify import TelegramNotifier
 from image_finder import ImageFinder
+from design_generator import DesignGenerator
+from design_hosting import DesignHosting
 
 console = Console()
 
@@ -53,6 +55,7 @@ class ProductConcept:
     base_cost: float = 0.0
     gross_margin_pct: float = 0.0
     image_urls: list[str] = field(default_factory=list)
+    design_url: str = ""
 
 
 class PassiveIncomePipeline:
@@ -62,12 +65,14 @@ class PassiveIncomePipeline:
     """
 
     def __init__(self, api_key: str = None):
-        self.client = AgentFactory.make_client(api_key or os.environ.get("ANTHROPIC_API_KEY"))
-        self.agents  = AgentFactory.create_all(self.client)
+        self.client   = AgentFactory.make_client(api_key or os.environ.get("ANTHROPIC_API_KEY"))
+        self.agents   = AgentFactory.create_all(self.client)
         self.shopify  = ShopifyActions()
         self.printful = PrintfulClient()
         self.telegram = TelegramNotifier()
         self.images   = ImageFinder()
+        self.designer = DesignGenerator()
+        self.hosting  = DesignHosting()
         self._started = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -112,9 +117,13 @@ class PassiveIncomePipeline:
         # Stage 4b — find matching images
         concepts = self._stage_images(concepts)
 
-        # Stage 5 — create in Shopify
+        # Stage 4c — generate print designs (Printful mode only)
+        if use_printful:
+            concepts = self._stage_designs(concepts)
+
+        # Stage 5 — create in Shopify (or via Printful sync)
         if not dry_run:
-            concepts = self._stage_create_listings(concepts)
+            concepts = self._stage_create_listings(concepts, use_printful)
         else:
             console.print("[yellow]⚠ DRY RUN — skipping Shopify product creation[/yellow]\n")
 
@@ -429,11 +438,57 @@ class PassiveIncomePipeline:
         return concepts
 
     # ─────────────────────────────────────────────────────────────────────────
-    # STAGE 5 — CREATE LISTINGS IN SHOPIFY
+    # STAGE 4c — GENERATE PRINT DESIGNS (PRINTFUL MODE)
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _stage_create_listings(self, concepts: list[ProductConcept]) -> list[ProductConcept]:
-        console.print(Rule("[bold yellow]STAGE 5 — SHOPIFY: CREATING LIVE LISTINGS[/bold yellow]"))
+    def _stage_designs(self, concepts: list[ProductConcept]) -> list[ProductConcept]:
+        console.print(Rule("[bold yellow]STAGE 4c — DESIGN GENERATOR: PRINT-READY FILES[/bold yellow]"))
+
+        if not self.hosting.is_configured():
+            console.print(
+                "[yellow]⚠ IMGBB_API_KEY not set — Printful sync will be skipped.[/yellow]\n"
+                "[dim]Add IMGBB_API_KEY as a GitHub secret to enable design generation.[/dim]\n"
+                "[dim]Get a free key at: https://api.imgbb.com/[/dim]\n"
+            )
+            return concepts
+
+        for c in concepts:
+            if not c.printful_key:
+                continue
+            console.print(f"  Generating design for [cyan]{c.name}[/cyan]...", end=" ")
+            try:
+                png_bytes = self.designer.generate(
+                    product_name=c.name,
+                    tagline=c.tagline,
+                    catalog_key=c.printful_key,
+                    product_type=c.product_type,
+                )
+                slug = c.name.lower().replace(" ", "-")[:40]
+                url = self.hosting.upload(png_bytes, name=f"lc-{slug}")
+                if url:
+                    c.design_url = url
+                    console.print(f"[green]✓ uploaded[/green]")
+                else:
+                    console.print("[red]✗ upload failed[/red]")
+            except Exception as e:
+                console.print(f"[red]✗ {e}[/red]")
+
+        designed = sum(1 for c in concepts if c.design_url)
+        console.print(f"\n[green]✓ {designed}/{len(concepts)} designs ready[/green]\n")
+        return concepts
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STAGE 5 — CREATE LISTINGS IN SHOPIFY (OR PRINTFUL SYNC)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _stage_create_listings(self, concepts: list[ProductConcept], use_printful: bool = False) -> list[ProductConcept]:
+        printful_active = (
+            use_printful
+            and self.printful.is_configured()
+            and self.hosting.is_configured()
+        )
+        mode_label = "PRINTFUL SYNC" if printful_active else "SHOPIFY"
+        console.print(Rule(f"[bold yellow]STAGE 5 — {mode_label}: CREATING LIVE LISTINGS[/bold yellow]"))
 
         if not self.shopify.store_url or not self.shopify.access_token:
             console.print("[yellow]⚠ Shopify not configured — skipping listing creation.[/yellow]")
@@ -447,26 +502,49 @@ class PassiveIncomePipeline:
 
             console.print(f"  [dim]{i+1}/{len(concepts)}[/dim] Creating [cyan]{title}[/cyan]...", end=" ")
             try:
-                result = self.shopify.create_product(
-                    title=title,
-                    description=desc,
-                    price=c.price,
-                    product_type=c.product_type,
-                    tags=tags,
-                    compare_at_price=c.compare_at if c.compare_at else None,
-                    images=c.image_urls or None,
-                )
+                # Use Printful sync product creation when all prerequisites are met
+                if printful_active and c.printful_key and c.design_url:
+                    result = self._create_printful_product(c, title, desc)
+                else:
+                    result = self.shopify.create_product(
+                        title=title,
+                        description=desc,
+                        price=c.price,
+                        product_type=c.product_type,
+                        tags=tags,
+                        compare_at_price=c.compare_at if c.compare_at else None,
+                        images=c.image_urls or None,
+                    )
                 c.shopify_result = result
                 console.print(f"[green]✓[/green] [dim]{result.get('shopify_url', '')}[/dim]")
             except Exception as e:
                 c.shopify_result = {"error": str(e)}
                 console.print(f"[red]✗ {e}[/red]")
 
-        created  = sum(1 for c in concepts if c.shopify_result.get("success"))
-        failed   = len(concepts) - created
+        created = sum(1 for c in concepts if c.shopify_result.get("success"))
+        failed  = len(concepts) - created
         console.print(f"\n[bold green]✓ {created} products created live[/bold green]"
                       + (f"  [red]{failed} failed[/red]" if failed else "") + "\n")
         return concepts
+
+    def _create_printful_product(self, c: "ProductConcept", title: str, desc: str) -> dict:
+        """Create a Printful sync product and return a shopify_result-compatible dict."""
+        resp = self.printful.create_sync_product(
+            name=title,
+            description=desc,
+            catalog_product_key=c.printful_key,
+            print_file_url=c.design_url,
+            retail_price=c.price,
+        )
+        # Printful returns the sync product under resp["result"]
+        result_data = resp.get("result", {})
+        sync_id = result_data.get("id") or result_data.get("sync_product", {}).get("id")
+        return {
+            "success": True,
+            "printful_id": sync_id,
+            "shopify_url": f"https://printful.com (sync product #{sync_id})",
+            "source": "printful",
+        }
 
     # ─────────────────────────────────────────────────────────────────────────
     # STAGE 6 — MARKETING CONTENT
