@@ -30,6 +30,7 @@ from agents import AgentFactory
 from shopify_actions import ShopifyActions
 from printful_client import PrintfulClient, PRINTFUL_CATALOG, PrintfulClient as PC
 from telegram_notify import TelegramNotifier
+from image_finder import ImageFinder
 
 console = Console()
 
@@ -49,8 +50,9 @@ class ProductConcept:
     seo_description: str = ""
     social_post: str = ""
     shopify_result: dict = field(default_factory=dict)
-    base_cost: float = 0.0      # Printful base cost (0 if not POD)
+    base_cost: float = 0.0
     gross_margin_pct: float = 0.0
+    image_urls: list[str] = field(default_factory=list)
 
 
 class PassiveIncomePipeline:
@@ -62,9 +64,10 @@ class PassiveIncomePipeline:
     def __init__(self, api_key: str = None):
         self.client = AgentFactory.make_client(api_key or os.environ.get("ANTHROPIC_API_KEY"))
         self.agents  = AgentFactory.create_all(self.client)
-        self.shopify = ShopifyActions()
+        self.shopify  = ShopifyActions()
         self.printful = PrintfulClient()
         self.telegram = TelegramNotifier()
+        self.images   = ImageFinder()
         self._started = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -105,6 +108,9 @@ class PassiveIncomePipeline:
 
         # Stage 4 — pricing
         concepts = self._stage_pricing(concepts, use_printful)
+
+        # Stage 4b — find matching images
+        concepts = self._stage_images(concepts)
 
         # Stage 5 — create in Shopify
         if not dry_run:
@@ -391,6 +397,38 @@ class PassiveIncomePipeline:
         return concepts
 
     # ─────────────────────────────────────────────────────────────────────────
+    # STAGE 4b — FIND MATCHING PRODUCT IMAGES
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _stage_images(self, concepts: list[ProductConcept]) -> list[ProductConcept]:
+        console.print(Rule("[bold yellow]STAGE 4b — PEXELS: MATCHING PRODUCT IMAGES[/bold yellow]"))
+
+        if not self.images.is_configured():
+            console.print("[yellow]⚠ PEXELS_API_KEY not set — products will be created without images.[/yellow]")
+            console.print("[dim]Add PEXELS_API_KEY as a GitHub secret to enable automatic product photos.[/dim]\n")
+            return concepts
+
+        for c in concepts:
+            console.print(f"  Searching for [cyan]{c.name}[/cyan]...", end=" ")
+            urls = self.images.find_for_product(
+                product_name=c.name,
+                product_type=c.product_type,
+                tagline=c.tagline,
+                count=3,
+            )
+            c.tags = c.tags or []
+            if urls:
+                c.__dict__.setdefault("image_urls", urls)
+                c.image_urls = urls
+                console.print(f"[green]✓ {len(urls)} images found[/green]")
+            else:
+                c.image_urls = []
+                console.print("[dim]no results[/dim]")
+
+        console.print()
+        return concepts
+
+    # ─────────────────────────────────────────────────────────────────────────
     # STAGE 5 — CREATE LISTINGS IN SHOPIFY
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -416,6 +454,7 @@ class PassiveIncomePipeline:
                     product_type=c.product_type,
                     tags=tags,
                     compare_at_price=c.compare_at if c.compare_at else None,
+                    images=c.image_urls or None,
                 )
                 c.shopify_result = result
                 console.print(f"[green]✓[/green] [dim]{result.get('shopify_url', '')}[/dim]")
