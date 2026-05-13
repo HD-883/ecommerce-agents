@@ -283,6 +283,35 @@ class ShopifyActions:
             "total_price": d.get("total_price"),
         }
 
+    # ── Product Images ────────────────────────────────────────────────────────
+
+    def add_product_images(self, product_id: int, image_urls: list[str]) -> dict:
+        """Add images to an existing Shopify product by URL."""
+        added = []
+        for url in image_urls[:5]:
+            try:
+                result = self._post(
+                    f"products/{product_id}/images.json",
+                    {"image": {"src": url}},
+                )
+                img = result.get("image", {})
+                added.append({"id": img.get("id"), "src": img.get("src")})
+            except Exception as e:
+                added.append({"error": str(e), "url": url})
+        return {"product_id": product_id, "images_added": len([i for i in added if "id" in i]), "results": added}
+
+    def get_products_without_images(self, limit: int = 50) -> list:
+        """Return products that have no images attached."""
+        data = self._get("products.json", {
+            "limit": limit,
+            "fields": "id,title,images,product_type,tags",
+        })
+        return [
+            {"id": p["id"], "title": p["title"], "product_type": p.get("product_type", ""), "tags": p.get("tags", "")}
+            for p in data.get("products", [])
+            if not p.get("images")
+        ]
+
     # ── Analytics (CIPHER) ────────────────────────────────────────────────────
 
     def get_revenue_by_day(self, days: int = 30) -> dict:

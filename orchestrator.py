@@ -20,6 +20,7 @@ from agent_tools import TOOLS_BY_AGENT, ToolRunner
 from telegram_notify import TelegramNotifier
 from product_pipeline import PassiveIncomePipeline
 from printful_client import PrintfulClient
+from image_finder import ImageFinder
 
 console = Console()
 
@@ -518,6 +519,53 @@ class ARIAOrchestrator:
         self._print_response(luna, result)
         self.telegram.send(
             f"🌙 *LUNA — Products Created*\n━━━━━━━━━━━━━━━━━\n{result[:400]}...\n\n"
+            f"[View store →](https://github.com/HD-883/ecommerce-agents/actions)"
+        )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # IMAGE REPAIR — ADD IMAGES TO EXISTING PRODUCTS
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def fix_product_images(self):
+        """Find all Shopify products without images and add matching photos via Pexels."""
+        self._section("FIXING PRODUCT IMAGES — PEXELS IMAGE SEARCH")
+
+        finder = ImageFinder()
+        if not finder.is_configured():
+            console.print("[red]PEXELS_API_KEY not set. Add it as a GitHub secret or to your .env file.[/red]")
+            return
+
+        products = self.shopify.get_products_without_images(limit=50)
+        if not products:
+            console.print("[green]✓ All products already have images.[/green]")
+            return
+
+        console.print(f"[yellow]Found {len(products)} products without images. Searching Pexels...[/yellow]\n")
+
+        fixed = 0
+        for p in products:
+            console.print(f"  [cyan]{p['title']}[/cyan] (type: {p['product_type'] or 'unknown'})...", end=" ")
+            urls = finder.find_for_product(
+                product_name=p["title"],
+                product_type=p.get("product_type", ""),
+                count=3,
+            )
+            if not urls:
+                console.print("[dim]no images found[/dim]")
+                continue
+
+            result = self.shopify.add_product_images(p["id"], urls)
+            added = result.get("images_added", 0)
+            if added:
+                console.print(f"[green]✓ {added} images added[/green]")
+                fixed += 1
+            else:
+                console.print("[red]✗ failed to add images[/red]")
+
+        console.print(f"\n[bold green]✓ Images added to {fixed}/{len(products)} products[/bold green]\n")
+        self.telegram.send(
+            f"🖼 *Product Images Fixed*\n━━━━━━━━━━━━━━━━━\n"
+            f"Added images to *{fixed}/{len(products)}* products via Pexels.\n\n"
             f"[View store →](https://github.com/HD-883/ecommerce-agents/actions)"
         )
 
