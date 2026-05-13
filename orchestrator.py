@@ -16,6 +16,7 @@ from config import AGENT_CONFIGS, HIERARCHY, BUSINESS_CONTEXT
 from agents import AgentFactory, BaseAgent
 from income_ideas import INCOME_IDEAS, QUICK_WINS
 from shopify_client import ShopifyClient
+from shopify_actions import ShopifyActions
 from agent_tools import TOOLS_BY_AGENT, ToolRunner
 from telegram_notify import TelegramNotifier
 from product_pipeline import PassiveIncomePipeline
@@ -530,12 +531,14 @@ class ARIAOrchestrator:
         """Find all Shopify products without images and add matching photos via Pexels."""
         self._section("FIXING PRODUCT IMAGES — PEXELS IMAGE SEARCH")
 
-        finder = ImageFinder()
+        finder  = ImageFinder()
+        actions = ShopifyActions()
+
         if not finder.is_configured():
             console.print("[red]PEXELS_API_KEY not set. Add it as a GitHub secret or to your .env file.[/red]")
             return
 
-        products = self.shopify.get_products_without_images(limit=50)
+        products = actions.get_products_without_images(limit=50)
         if not products:
             console.print("[green]✓ All products already have images.[/green]")
             return
@@ -554,7 +557,7 @@ class ARIAOrchestrator:
                 console.print("[dim]no images found[/dim]")
                 continue
 
-            result = self.shopify.add_product_images(p["id"], urls)
+            result = actions.add_product_images(p["id"], urls)
             added = result.get("images_added", 0)
             if added:
                 console.print(f"[green]✓ {added} images added[/green]")
