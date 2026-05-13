@@ -75,26 +75,26 @@ class PrintfulClient:
         resp.raise_for_status()
         return resp.json()
 
-    def upload_design_file(self, image_bytes: bytes, filename: str = "design.png") -> str:
+    def upload_design_file(self, image_url: str) -> str:
         """
-        Upload a print file directly to Printful's file library.
-        Returns a Printful-hosted URL that can be used in sync_variants.files.
-        This is more reliable than external hosts (ImgBB, etc.) because
-        Printful's own CDN is always accessible during product creation.
+        Register an externally-hosted design URL with Printful's file library.
+        Printful fetches and caches the file on its own CDN.
+        Returns the Printful-hosted URL for use in sync product variants.
+        Falls back to the original URL if registration fails.
         """
-        resp = requests.post(
-            f"{self.BASE_URL}/files",
-            headers={"Authorization": f"Bearer {self.api_key}"},
-            files={"file": (filename, image_bytes, "image/png")},
-            data={"type": "default"},
-            timeout=60,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        url = data.get("result", {}).get("url")
-        if not url:
-            raise ValueError(f"Printful file upload returned no URL: {data}")
-        return url
+        try:
+            resp = requests.post(
+                f"{self.BASE_URL}/files",
+                headers=self._headers(),
+                json={"url": image_url, "type": "default"},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            printful_url = data.get("result", {}).get("url")
+            return printful_url if printful_url else image_url
+        except Exception:
+            return image_url
 
     def get_store_info(self) -> dict:
         """Verify connection and get store details."""
