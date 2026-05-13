@@ -10,18 +10,18 @@ import requests
 
 # Popular Printful catalog IDs for quick product creation
 PRINTFUL_CATALOG = {
-    "unisex_tshirt":      {"id": 71,  "name": "Unisex Staple T-Shirt",       "base_cost": 12.95},
-    "premium_tshirt":     {"id": 145, "name": "Unisex Heavy Cotton Tee",      "base_cost": 13.25},
-    "hoodie":             {"id": 380, "name": "Unisex Heavy Blend Hoodie",    "base_cost": 27.95},
-    "mug_11oz":           {"id": 19,  "name": "White Glossy Mug 11oz",        "base_cost": 8.95},
-    "mug_15oz":           {"id": 84,  "name": "White Glossy Mug 15oz",        "base_cost": 9.95},
-    "tote_bag":           {"id": 155, "name": "Tote Bag",                     "base_cost": 9.95},
-    "phone_case_iphone":  {"id": 266, "name": "iPhone Tough Case",           "base_cost": 14.95},
-    "poster_12x16":       {"id": 1,   "name": "Enhanced Matte Paper Poster", "base_cost": 11.95},
-    "canvas_16x20":       {"id": 3,   "name": "Canvas",                      "base_cost": 29.95},
-    "embroidered_hat":    {"id": 74,  "name": "Classic Dad Hat",              "base_cost": 18.95},
-    "notebook":           {"id": 505, "name": "Spiral Notebook",              "base_cost": 12.95},
-    "sticker_sheet":      {"id": 358, "name": "Kiss-Cut Sticker Sheet",       "base_cost": 4.25},
+    "unisex_tshirt":      {"id": 71,  "name": "Unisex Staple T-Shirt",       "base_cost": 12.95, "apparel": True},
+    "premium_tshirt":     {"id": 145, "name": "Unisex Heavy Cotton Tee",      "base_cost": 13.25, "apparel": True},
+    "hoodie":             {"id": 380, "name": "Unisex Heavy Blend Hoodie",    "base_cost": 27.95, "apparel": True},
+    "mug_11oz":           {"id": 19,  "name": "White Glossy Mug 11oz",        "base_cost": 8.95,  "apparel": False},
+    "mug_15oz":           {"id": 84,  "name": "White Glossy Mug 15oz",        "base_cost": 9.95,  "apparel": False},
+    "tote_bag":           {"id": 523, "name": "Tote Bag",                     "base_cost": 9.95,  "apparel": False},
+    "phone_case_iphone":  {"id": 266, "name": "iPhone Tough Case",           "base_cost": 14.95, "apparel": False},
+    "poster_12x16":       {"id": 1,   "name": "Enhanced Matte Paper Poster", "base_cost": 11.95, "apparel": False},
+    "canvas_16x20":       {"id": 3,   "name": "Canvas",                      "base_cost": 29.95, "apparel": False},
+    "embroidered_hat":    {"id": 74,  "name": "Classic Dad Hat",              "base_cost": 18.95, "apparel": True},
+    "notebook":           {"id": 505, "name": "Spiral Notebook",              "base_cost": 12.95, "apparel": False},
+    "sticker_sheet":      {"id": 358, "name": "Kiss-Cut Sticker Sheet",       "base_cost": 4.25,  "apparel": False},
 }
 
 SUGGESTED_MARGINS = {
@@ -109,25 +109,40 @@ class PrintfulClient:
         catalog = PRINTFUL_CATALOG[catalog_product_key]
         variants_data = self.get_catalog_variants(catalog["id"])
 
-        wanted_colors = set(c.upper() for c in (colors or ["White", "Black", "Navy"]))
-        wanted_sizes  = set(s.upper() for s in (sizes  or ["S", "M", "L", "XL"]))
+        if not variants_data:
+            raise ValueError(f"No variants returned from Printful for {catalog_product_key} "
+                             f"(id {catalog['id']}). The catalog ID may have changed.")
 
-        sync_variants = []
-        for v in variants_data:
-            color = v.get("color", "").upper()
-            size  = v.get("size",  "").upper()
-            if (not wanted_colors or color in wanted_colors) and \
-               (not wanted_sizes  or size  in wanted_sizes):
-                sync_variants.append({
-                    "retail_price": str(retail_price),
-                    "variant_id": v["id"],
-                    "files": [{"url": print_file_url}],
-                })
-                if len(sync_variants) >= 12:
-                    break
+        is_apparel = catalog.get("apparel", False)
 
-        if not sync_variants:
-            sync_variants = [{"retail_price": str(retail_price), "variant_id": variants_data[0]["id"], "files": [{"url": print_file_url}]}]
+        if is_apparel:
+            wanted_colors = set(c.upper() for c in (colors or ["White", "Black", "Navy"]))
+            wanted_sizes  = set(s.upper() for s in (sizes  or ["S", "M", "L", "XL"]))
+            sync_variants = []
+            for v in variants_data:
+                color = (v.get("color") or "").upper()
+                size  = (v.get("size")  or "").upper()
+                if color in wanted_colors and size in wanted_sizes:
+                    sync_variants.append({
+                        "retail_price": str(retail_price),
+                        "variant_id": v["id"],
+                        "files": [{"url": print_file_url}],
+                    })
+                    if len(sync_variants) >= 12:
+                        break
+            # Fallback: first 3 variants if color/size filter matched nothing
+            if not sync_variants:
+                sync_variants = [
+                    {"retail_price": str(retail_price), "variant_id": v["id"], "files": [{"url": print_file_url}]}
+                    for v in variants_data[:3]
+                ]
+        else:
+            # Non-apparel (mugs, posters, totes, canvas, notebooks):
+            # take all variants as-is — they don't use clothing color/size nomenclature
+            sync_variants = [
+                {"retail_price": str(retail_price), "variant_id": v["id"], "files": [{"url": print_file_url}]}
+                for v in variants_data[:6]
+            ]
 
         payload = {
             "sync_product": {
