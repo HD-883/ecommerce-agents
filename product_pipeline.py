@@ -502,21 +502,27 @@ class PassiveIncomePipeline:
 
             console.print(f"  [dim]{i+1}/{len(concepts)}[/dim] Creating [cyan]{title}[/cyan]...", end=" ")
             try:
-                # Use Printful sync product creation when all prerequisites are met
+                # Attempt Printful sync product creation; fall back to Shopify if it fails
                 if printful_active and c.printful_key and c.design_url:
-                    result = self._create_printful_product(c, title, desc)
-                else:
-                    result = self.shopify.create_product(
-                        title=title,
-                        description=desc,
-                        price=c.price,
-                        product_type=c.product_type,
-                        tags=tags,
-                        compare_at_price=c.compare_at if c.compare_at else None,
-                        images=c.image_urls or None,
-                    )
+                    try:
+                        result = self._create_printful_product(c, title, desc)
+                        c.shopify_result = result
+                        console.print(f"[green]✓ Printful[/green] [dim]{result.get('shopify_url', '')}[/dim]")
+                        continue
+                    except Exception as pf_err:
+                        console.print(f"[yellow]⚠ Printful failed ({pf_err}) — falling back to Shopify[/yellow]")
+
+                result = self.shopify.create_product(
+                    title=title,
+                    description=desc,
+                    price=c.price,
+                    product_type=c.product_type,
+                    tags=tags,
+                    compare_at_price=c.compare_at if c.compare_at else None,
+                    images=c.image_urls or None,
+                )
                 c.shopify_result = result
-                console.print(f"[green]✓[/green] [dim]{result.get('shopify_url', '')}[/dim]")
+                console.print(f"[green]✓ Shopify[/green] [dim]{result.get('shopify_url', '')}[/dim]")
             except Exception as e:
                 c.shopify_result = {"error": str(e)}
                 console.print(f"[red]✗ {e}[/red]")
