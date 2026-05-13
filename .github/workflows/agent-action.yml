@@ -10,11 +10,12 @@ on:
         options:
           - passive-income
           - create-products
+          - fix-images
           - flash-sale
           - cart-recovery
           - price-audit
-          - briefing
           - cipher-report
+          - briefing
           - ideas
           - delegate
           - train
