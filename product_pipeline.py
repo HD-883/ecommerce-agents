@@ -444,8 +444,11 @@ class PassiveIncomePipeline:
     def _stage_designs(self, concepts: list[ProductConcept]) -> list[ProductConcept]:
         console.print(Rule("[bold yellow]STAGE 4c — DESIGN GENERATOR: PRINT-READY FILES[/bold yellow]"))
 
-        if not self.printful.is_configured():
-            console.print("[yellow]⚠ PRINTFUL_API_KEY not set — skipping design generation.[/yellow]\n")
+        if not self.hosting.is_configured():
+            console.print(
+                "[yellow]⚠ IMGBB_API_KEY not set — Printful sync will be skipped.[/yellow]\n"
+                "[dim]Add IMGBB_API_KEY as a GitHub secret to enable design generation.[/dim]\n"
+            )
             return concepts
 
         for c in concepts:
@@ -460,10 +463,14 @@ class PassiveIncomePipeline:
                     product_type=c.product_type,
                 )
                 slug = c.name.lower().replace(" ", "-")[:40]
-                # Upload directly to Printful's file library — always accessible during sync product creation
-                url = self.printful.upload_design_file(png_bytes, filename=f"lc-{slug}.png")
-                c.design_url = url
-                console.print(f"[green]✓ uploaded to Printful[/green]")
+                # Upload to ImgBB to get a public URL, then register with Printful's CDN
+                imgbb_url = self.hosting.upload(png_bytes, name=f"lc-{slug}")
+                if not imgbb_url:
+                    console.print("[red]✗ ImgBB upload failed[/red]")
+                    continue
+                # Register with Printful so it's cached on their CDN (more reliable for print)
+                c.design_url = self.printful.upload_design_file(imgbb_url)
+                console.print(f"[green]✓ design ready[/green]")
             except Exception as e:
                 console.print(f"[red]✗ {e}[/red]")
 
@@ -479,6 +486,7 @@ class PassiveIncomePipeline:
         printful_active = (
             use_printful
             and self.printful.is_configured()
+            and self.hosting.is_configured()
         )
         mode_label = "PRINTFUL SYNC" if printful_active else "SHOPIFY"
         console.print(Rule(f"[bold yellow]STAGE 5 — {mode_label}: CREATING LIVE LISTINGS[/bold yellow]"))
